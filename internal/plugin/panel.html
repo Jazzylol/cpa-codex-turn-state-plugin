@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Codex Turn State</title>
+<style>
+:root{color-scheme:light dark;--bg:#f7f7f5;--card:#fff;--text:#242421;--muted:#77766f;--border:#deded8;--accent:#3f6253;--sub:#edf2ee;--danger:#b44537;font:15px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+@media(prefers-color-scheme:dark){:root{--bg:#181a18;--card:#222522;--text:#eeefeb;--muted:#a7ada4;--border:#3d443c;--accent:#a5c9b5;--sub:#2c3930;--danger:#f49d92}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text)}main{max-width:1080px;margin:auto;padding:38px 24px 60px}h1{font-size:29px;letter-spacing:-.7px;margin:0}p{margin:8px 0 20px;color:var(--muted)}header{margin-bottom:28px}section{border:1px solid var(--border);border-radius:16px;background:var(--card);padding:24px;margin-bottom:20px}h2{font-size:17px;margin:0 0 18px}label{display:block;font-weight:600;margin:18px 0 8px}input,select,textarea,button{font:inherit}input,select,textarea{width:100%;border:1px solid var(--border);border-radius:9px;padding:11px 13px;color:var(--text);background:var(--card)}textarea{font-family:ui-monospace,monospace;resize:vertical;min-height:125px;word-break:break-all}button{cursor:pointer;border:1px solid var(--border);border-radius:9px;padding:9px 17px;background:var(--card);color:var(--text);font-weight:600}button.primary{background:var(--accent);color:var(--card);border-color:var(--accent)}button.danger{color:var(--danger)}button:disabled{opacity:.5;cursor:wait}.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.row input{flex:1;min-width:200px}.actions{margin-top:22px}.switch{display:flex;gap:10px;align-items:center;font-weight:500}.switch input{width:18px;height:18px}.hint{font-size:13px;margin-top:8px;color:var(--muted)}.badge{font-size:12px;background:var(--sub);color:var(--accent);border-radius:30px;padding:3px 10px}.top{display:flex;justify-content:space-between;gap:15px;align-items:center}.meta{font:12px ui-monospace,monospace;overflow-wrap:anywhere;color:var(--muted)}#status{min-height:25px;margin:14px 0;overflow-wrap:anywhere}#status.error{color:var(--danger)}#status.success{color:var(--accent)}.list{margin-top:15px}.item{padding:16px 0;border-top:1px solid var(--border);display:flex;gap:14px;align-items:center;justify-content:space-between}.item span{overflow-wrap:anywhere}.item button{flex-shrink:0}.visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}[hidden]{display:none!important}:focus-visible{outline:2px solid var(--accent);outline-offset:3px}@media(max-width:600px){main{padding:24px 15px}section{padding:18px}.top{align-items:flex-start}.actions button{flex:1}h1{font-size:25px}}
+</style>
+</head>
+<body><main>
+<header><div class="top"><h1>Codex Turn State</h1><span class="badge">按凭据配置</span></div><p>为选中的 Codex 凭据设置固定的 X-Codex-Turn-State 请求头。</p></header>
+<section id="login"><h2>连接管理接口</h2><label for="key">CPA 管理密钥</label><div class="row"><input id="key" type="password" autocomplete="off" placeholder="输入管理后台使用的密钥"><button id="connect" class="primary">连接</button></div><div class="hint">密钥仅保存在当前页面内存中，关闭页面后清除。</div></section>
+<div id="status" role="status" aria-live="polite"></div>
+<div id="editor" hidden>
+<section><div class="top"><h2>凭据设置</h2><button id="refresh">刷新列表</button></div>
+<label for="credential">选择 Codex 凭据</label><select id="credential"><option value="">请选择凭据</option></select><div id="identity" class="meta"></div>
+<label for="value">X-Codex-Turn-State</label><textarea id="value" spellcheck="false" maxlength="8192" placeholder="粘贴完整标头值；不要包含 X-Codex-Turn-State: 前缀"></textarea><div class="hint"><span id="length">0</span> / 8192 字符 · 单行值，不允许换行</div>
+<label class="switch"><input id="enabled" type="checkbox">为此凭据启用覆盖</label>
+<div class="hint">保存后，新的模型请求使用此值。WebSocket 在建立连接时发送请求头，修改后请重新连接客户端。</div>
+<div class="row actions"><button id="save" class="primary">保存配置</button><button id="remove" class="danger">删除此规则</button><button id="disconnect">断开</button></div>
+</section>
+<section><h2>已保存的规则</h2><div id="rules" class="list"></div><p class="hint">关闭或删除规则后，此插件不再修改该凭据的请求头。原有客户端行为继续生效。</p></section>
+</div>
+</main>
+<script>
+'use strict';
+const $=id=>document.getElementById(id), prefix='/v0/management/plugins/codex-turn-state';
+let key='',credentials=[],rules=[],busy=false;
+function status(message,error=false){$('status').textContent=message;$('status').className=error?'error':'success';}
+function lock(value){busy=value;for(const el of document.querySelectorAll('button,select,textarea,input'))el.disabled=value;}
+async function api(path,method='GET',body){const r=await fetch(prefix+path,{method,headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body),cache:'no-store'});const text=await r.text();let data;try{data=JSON.parse(text);}catch{data={};}if(!r.ok){if(r.status===401||r.status===403)disconnect(false);throw new Error(data.error||'请求失败：HTTP '+r.status);}return data;}
+function current(){return credentials.find(c=>c.id===$('credential').value);}
+function selectCredential(){const c=current(),r=rules.find(r=>r.auth_id===c?.id);$('identity').textContent=c?'ID: '+c.id+' · '+c.status:'';$('value').value=r?.value||'';$('enabled').checked=r?.enabled||false;$('length').textContent=$('value').value.length;}
+function renderRules(){const box=$('rules');box.replaceChildren();if(!rules.length){box.textContent='尚未设置任何凭据。';return;}for(const r of rules){const row=document.createElement('div');row.className='item';const label=document.createElement('span');label.textContent=r.auth_id+' · '+(r.enabled?'已启用':'已关闭')+' · '+r.value.length+' 字符';const button=document.createElement('button');button.textContent=credentials.some(c=>c.id===r.auth_id)?'编辑':'删除失效规则';button.addEventListener('click',()=>{if(credentials.some(c=>c.id===r.auth_id)){$('credential').value=r.auth_id;selectCredential();$('value').focus();}else{run(async()=>{await api('/rule','DELETE',{auth_id:r.auth_id});await load();status('失效规则已删除');});}});row.append(label,button);box.append(row);}}
+async function load(){const selected=$('credential').value;const [catalog,saved]=await Promise.all([api('/credentials'),api('/rules')]);credentials=catalog.credentials;rules=saved.rules;const select=$('credential');select.replaceChildren();const blank=document.createElement('option');blank.value='';blank.textContent=credentials.length?'请选择凭据':'没有可用的 Codex 文件凭据';select.append(blank);for(const c of credentials){const option=document.createElement('option');option.value=c.id;option.textContent=c.name+(c.label&&c.label!==c.name?' · '+c.label:'')+(c.disabled?'（凭据已禁用）':'');select.append(option);}if(credentials.some(c=>c.id===selected))select.value=selected;selectCredential();renderRules();}
+async function run(fn){if(busy)return;lock(true);try{await fn();}catch(err){status(err.message,true);}finally{lock(false);}}
+function disconnect(announce=true){key='';$('key').value='';$('value').value='';credentials=[];rules=[];$('rules').replaceChildren();$('editor').hidden=true;$('login').hidden=false;if(announce)status('已断开');}
+$('connect').addEventListener('click',()=>run(async()=>{key=$('key').value.trim();if(!key)throw new Error('请输入管理密钥');await load();$('key').value='';$('login').hidden=true;$('editor').hidden=false;status('已连接。请选择要配置的凭据。');}));
+$('key').addEventListener('keydown',e=>{if(e.key==='Enter')$('connect').click();});
+$('refresh').addEventListener('click',()=>run(async()=>{await load();status('列表已刷新');}));
+$('credential').addEventListener('change',selectCredential);$('value').addEventListener('input',()=>{$('length').textContent=$('value').value.length;});
+$('save').addEventListener('click',()=>run(async()=>{const c=current();if(!c)throw new Error('请先选择凭据');const value=$('value').value;if(value!==value.trim()||/[^\x20-\x7e]/.test(value))throw new Error('标头值必须为单行 ASCII，首尾不能有空白');if(/^x-codex-turn-state\s*:/i.test(value))throw new Error('只粘贴标头值，不要包含标头名称和冒号');if($('enabled').checked&&!value)throw new Error('启用前请填写标头值');await api('/rule','PUT',{auth_id:c.id,auth_index:c.auth_index,value,enabled:$('enabled').checked});await load();status('已保存。HTTP 新请求生效；WebSocket 请重新连接。');}));
+$('remove').addEventListener('click',()=>run(async()=>{const c=current();if(!c)throw new Error('请先选择凭据');await api('/rule','DELETE',{auth_id:c.id});await load();status('规则已删除');}));
+$('disconnect').addEventListener('click',()=>disconnect());
+</script></body></html>

@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "plugins": [
+    {
+      "id": "codex-turn-state",
+      "name": "Codex Turn State",
+      "description": "按 Codex 凭据覆盖 X-Codex-Turn-State，支持 HTTP、压缩、WebSocket 握手和重试隔离。带中文管理页，默认不覆盖。图片接口不兼容时在出站前返回 501；不修改 OAuth 刷新、额度查询或管理 API Call。",
+      "author": "jinshenganyuci",
+      "version": "0.1.0",
+      "repository": "https://github.com/jinshenganyuci/cpa-codex-turn-state-plugin",
+      "homepage": "https://github.com/jinshenganyuci/cpa-codex-turn-state-plugin/blob/main/README_CN.md",
+      "license": "MIT",
+      "tags": ["codex", "headers", "per-credential"],
+      "install": { "type": "github-release" }
+    }
+  ]
+}

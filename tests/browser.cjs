@@ -1,0 +1,42 @@
+const {chromium}=require(process.env.CPA_BROWSER_MODULE);
+const fs=require('fs');
+const path=require('path');
+(async()=>{
+ const browser=await chromium.launch({headless:true,args:['--no-sandbox'],...(process.env.CPA_BROWSER_EXECUTABLE?{executablePath:process.env.CPA_BROWSER_EXECUTABLE}:{})});
+ const results=[];
+ const check=(name,value)=>{if(!value)throw Error(name);results.push({name,passed:true});};
+ try{
+  const page=await browser.newPage({viewport:{width:1160,height:950}});
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.goto(process.env.CPA_TEST_URL+'/v0/resource/plugins/codex-turn-state/panel');
+  check('static resource has no loaded credentials',await page.locator('#editor').isHidden());
+  await page.locator('#key').fill('isolated-plugin-test-key');await page.locator('#connect').click();
+  await page.locator('#editor').waitFor({state:'visible'});
+  check('management key cleared from input',await page.locator('#key').inputValue()==='');
+  check('credential list populated',(await page.locator('#credential option').count())===3);
+  await page.locator('#credential').selectOption('b.json');
+  check('unconfigured credential starts disabled',!(await page.locator('#enabled').isChecked()));
+  await page.locator('#value').fill('browser-value/+=&<literal>');await page.locator('#enabled').check();await page.locator('#save').click();
+  await page.waitForFunction(()=>document.getElementById('status').textContent.startsWith('已保存'));
+  check('literal value survives management roundtrip',await page.locator('#value').inputValue()==='browser-value/+=&<literal>');
+  await page.locator('#refresh').click();await page.waitForFunction(()=>document.getElementById('status').textContent==='列表已刷新');
+  check('saved enabled flag persists',await page.locator('#enabled').isChecked());
+  await page.locator('#value').fill('X-Codex-Turn-State: wrong');await page.locator('#save').click();
+  await page.waitForFunction(()=>document.getElementById('status').textContent.includes('不要包含标头名称'));
+  check('header name paste rejected',await page.locator('#status').getAttribute('class')==='error');
+  await page.locator('#value').fill('browser-value/+=&<literal>');await page.locator('#enabled').uncheck();await page.locator('#save').click();
+  await page.waitForFunction(()=>document.getElementById('status').textContent.startsWith('已保存'));
+  check('rule can be disabled',!(await page.locator('#enabled').isChecked()));
+  await page.screenshot({path:path.join(process.env.CPA_TEST_ROOT,'validation','panel-desktop.png'),fullPage:true});
+  await page.setViewportSize({width:390,height:844});
+  check('mobile has no horizontal overflow',await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  await page.screenshot({path:path.join(process.env.CPA_TEST_ROOT,'validation','panel-mobile.png'),fullPage:true});
+  await page.locator('#remove').click();await page.waitForFunction(()=>document.getElementById('status').textContent==='规则已删除');
+  check('delete clears editor',await page.locator('#value').inputValue()==='');
+  await page.locator('#disconnect').click();check('disconnect hides private settings',await page.locator('#editor').isHidden());
+  check('no credentials persisted in browser storage',await page.evaluate(()=>localStorage.length===0&&sessionStorage.length===0));
+  check('no browser runtime errors',errors.length===0);
+  fs.writeFileSync(path.join(process.env.CPA_TEST_ROOT,'validation','browser-results.json'),JSON.stringify(results,null,2));
+  console.log(JSON.stringify(results));
+ }finally{await browser.close();}
+})().catch(e=>{console.error(e.message);process.exitCode=1;});

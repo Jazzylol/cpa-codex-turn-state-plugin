@@ -1,0 +1,9 @@
+# Merge into your existing plugins block; do not duplicate the top-level key.
+plugins:
+  enabled: true
+  dir: plugins
+  configs:
+    codex-turn-state:
+      enabled: true
+      priority: 100
+      state_file: plugins/codex-turn-state-state.json

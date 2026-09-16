@@ -1,0 +1,7 @@
+/dist/
+/validation/
+*.so
+*.h
+*.dylib
+*.dll
+__pycache__/
